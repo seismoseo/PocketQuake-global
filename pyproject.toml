@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pocketquake-global"
+dynamic = ["version"]            # read from pqglobal.__version__
+description = "From an earthquake catalog anywhere to relocated hypocenters, focal mechanisms and a summary notebook, with FDSN data and PocketQuake's pipeline"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [{name = "Min-Seong Seo"}]
+requires-python = ">=3.10"
+# The relocation pipeline's own dependencies (PhaseNet+/EQNet, PyTorch, SKHASH, HYPOINVERSE, HypoDD)
+# come with PocketQuake's environment; see README "Install".
+dependencies = ["obspy>=1.4", "numpy", "pandas"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+pocketquake-global = "pqglobal.run:main"
+
+[tool.setuptools]
+packages = ["pqglobal"]
+
+[tool.setuptools.dynamic]
+version = {attr = "pqglobal.__version__"}

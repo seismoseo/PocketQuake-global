@@ -1,0 +1,4 @@
+[submodule "external/PocketQuake"]
+	path = external/PocketQuake
+	url = https://github.com/seismoseo/PocketQuake.git
+	shallow = true
