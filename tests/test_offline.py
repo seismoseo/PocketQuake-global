@@ -1,6 +1,8 @@
 """Offline tests: no network, no seismic tools. `pytest -q tests`."""
 import io
 import os
+import sys
+import types
 
 import numpy as np
 import pandas as pd
@@ -66,6 +68,55 @@ def test_velocity_model_argument_builds_the_model():
     m = eval(run._velocity_model_arg("con", (5, 8, 5, 1), 1.747), {"layered_velmodel": layered_velmodel})
     assert m.name == "con" and len(m.p_rows) == 20
     assert m.s_rows[0][0] == pytest.approx(m.p_rows[0][0] / 1.747, abs=1e-4)
+
+
+@pytest.mark.parametrize("extra, expected", [
+    ([], dict(s_on_t=False, orientation_csv=None, orientation_missing="error",
+              rotation_reference=None)),
+    (["--s-on-t"], dict(s_on_t=True, orientation_csv=None, orientation_missing="error",
+                        rotation_reference=None)),
+    (["--orientation-csv", "residual.csv", "--orientation-missing", "skip",
+      "--rotation-reference", "37.79,-121.96"],
+     dict(s_on_t=True, orientation_csv="residual.csv", orientation_missing="skip",
+          rotation_reference=(37.79, -121.96))),
+])
+def test_cli_forwards_orientation_options(tmp_path, monkeypatch, extra, expected):
+    """Cached FDSN stages must carry the requested orientation policy into PocketQuake."""
+    catalog.write(catalog.from_usgs_csv(io.StringIO(COMCAT)), str(tmp_path / "event_catalog.csv"))
+    (tmp_path / "network_picks.csv").touch()
+    st_dir = tmp_path / "station_table"
+    st_dir.mkdir()
+    for name in run.STATION_FILES:
+        (st_dir / name).touch()
+    pd.DataFrame(dict(verdict=["used"], band=["HH"], location=[""])).to_csv(
+        st_dir / "sensors.csv", index=False)
+    called = []
+    orchestrator = types.ModuleType("pocketquake.orchestrate")
+
+    def capture(*args, **kwargs):
+        called.append((args, kwargs))
+        return {"status": "captured"}
+
+    orchestrator.orchestrate = capture
+    monkeypatch.setitem(sys.modules, "pocketquake.orchestrate", orchestrator)
+    # Every FDSN stage is cached; any accidental network fetch is a test failure.
+    def unexpected_fetch(*args, **kwargs):
+        raise AssertionError("cached CLI test attempted a network fetch")
+
+    monkeypatch.setattr(run.catmod, "from_usgs", unexpected_fetch)
+    monkeypatch.setattr(run.network_picks, "fetch", unexpected_fetch)
+    monkeypatch.setattr(run.stations, "select_picked", unexpected_fetch)
+    run.main(["--name", "offline", "--region", "Offline", "--work", str(tmp_path),
+              "--catalog-csv", "unused.csv", "--velmodel", "con", "--apply", *extra])
+    assert len(called) == 1
+    assert {key: called[0][1][key] for key in expected} == expected
+
+
+@pytest.mark.parametrize("value", ["37.79", "37.79,-121.96,0", "nan,0", "91,0", "0,181"])
+def test_rotation_reference_rejects_invalid_coordinates(value):
+    import argparse
+    with pytest.raises(argparse.ArgumentTypeError):
+        run._rotation_reference(value)
 
 
 def _tr(ch, t0, n, sr=100.0):

@@ -3,6 +3,17 @@
 Versioning follows [Semantic Versioning](https://semver.org/). The single source of truth is
 `pqglobal.__version__`; `pyproject.toml` reads it.
 
+## 0.2.0 — 2026-11-22
+
+- Forward `--s-on-t`, `--orientation-csv`, `--orientation-missing {error,zero,skip}`, and
+  `--rotation-reference LAT,LON` to PocketQuake's orchestrator. A table enables S
+  cross-correlation on T; the default remains S on the better of N/E, with P on Z.
+- Document that orientation tables for FDSN inputs correct residual misorientation after
+  metadata-based Z/N/E rotation, to avoid applying metadata orientation twice.
+- Add offline CLI forwarding and reference-coordinate validation tests.
+
+**Depends on** PocketQuake v1.17.0 for transverse-component processing.
+
 ## 0.1.0 — 2026-10-23
 
 First release: PocketQuake's chain for any region with FDSN data.
