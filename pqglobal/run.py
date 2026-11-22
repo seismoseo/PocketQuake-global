@@ -16,6 +16,7 @@ Stages (each one writes into --work and is reused on a rerun):
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import re
 import shutil
@@ -28,6 +29,18 @@ from pqglobal import network_picks, stations, velmodel
 from pqglobal.waveforms import FDSNFetcher, event_id
 
 STATION_FILES = ("FDSN_station.csv", "sensors.csv", "inventory.xml")
+
+
+def _rotation_reference(value):
+    """Parse the optional shared source point used for R/T back azimuths."""
+    try:
+        lat, lon = (float(x) for x in value.split(","))
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("expected LAT,LON") from exc
+    if not (math.isfinite(lat) and math.isfinite(lon) and
+            -90 <= lat <= 90 and -180 <= lon <= 180):
+        raise argparse.ArgumentTypeError("LAT,LON must be finite and within geographic bounds")
+    return lat, lon
 
 
 def _velocity_model_arg(name, counts, vpvs, layers_csv=None):
@@ -73,9 +86,21 @@ def main(argv=None):
     ap.add_argument("--post", type=float, default=360.0)
     ap.add_argument("--fetch-workers", type=int, default=2)
     ap.add_argument("--cores", type=int, default=2, help="xcorr worker cap (memory!)")
+    ap.add_argument("--s-on-t", action="store_true",
+                    help="measure S differential times on T after N/E to R/T rotation; P stays on Z")
+    ap.add_argument("--orientation-csv", metavar="PATH",
+                    help="time-dependent residual N/E misorientation table (implies --s-on-t); "
+                         "FDSN metadata orientation is already applied")
+    ap.add_argument("--orientation-missing", choices=("error", "zero", "skip"), default=None,
+                    help="policy for missing orientation epochs (default: error)")
+    ap.add_argument("--rotation-reference", type=_rotation_reference, metavar="LAT,LON",
+                    help="shared source point for R/T back azimuths (default: each event)")
     ap.add_argument("--stop-after", choices=("catalog", "picks", "stations", "run"), default="run")
     ap.add_argument("--apply", action="store_true")
     a = ap.parse_args(argv)
+    if (not a.s_on_t and not a.orientation_csv
+            and (a.orientation_missing is not None or a.rotation_reference is not None)):
+        ap.error("orientation settings require --s-on-t or --orientation-csv")
     os.makedirs(a.work, exist_ok=True)
 
     # 1. catalog
@@ -142,13 +167,19 @@ def main(argv=None):
     fetcher = FDSNFetcher(service=a.data_service, pre_s=a.pre, post_s=a.post,
                           workers=a.fetch_workers)
     kw = dict(region=a.region, wf_backend="external", fetcher=fetcher, velmodel=vm_name,
-              cores=a.cores, spec_extra=dict(factory="global_cluster",
+              cores=a.cores, s_on_t=a.s_on_t or bool(a.orientation_csv),
+              orientation_csv=a.orientation_csv, orientation_missing=a.orientation_missing or "error",
+              rotation_reference=a.rotation_reference,
+              spec_extra=dict(factory="global_cluster",
                                              factory_imports=("layered_velmodel",),
                                              factory_args=factory_args,
                                              station_tables_fn=station_tables_fn,
                                              station_master_files=("FDSN_station.csv",)))
     print(f"[run] cluster {a.name} ({a.region}) epicenter {lat}, {lon}; bounds {bounds}\n"
           f"      {factory_args}")
+    if kw["s_on_t"]:
+        print(f"[run] S on T; residual orientation table={a.orientation_csv or 'none (0 deg)'}; "
+              f"missing={kw['orientation_missing']}; reference={a.rotation_reference or 'each event'}")
     if not a.apply:
         print("[run] dry run: pass --apply to scaffold, download and run the pipeline")
         return
