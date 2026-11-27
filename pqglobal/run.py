@@ -61,6 +61,45 @@ def _velocity_model_arg(name, counts, vpvs, layers_csv=None):
     return f'layered_velmodel("{name}", ({t}), ({v}), {vpvs})'
 
 
+def _ncsn_velocity_model_arg(name, code, multmod, alt_extra, work, vpvs=None):
+    """Source text of the cluster module's velocity model following NCSN's own setup for a region
+    with two models across a fault (e.g. 'gab': Gabilan + its alternate Diablo, Bear Valley):
+    HYPOINVERSE reads NCSN's two gradient models (.crt), their station delays and P-to-S ratios, and
+    the alternate-station list (NCSN's file + `alt_extra`, lines 'STA   NET  A') exactly as NCSN
+    does (CRT/DEL/PSM/ALT, DEL -1); HypoDD gets the slowness average of the two cut into <= 20 layers;
+    SKHASH traces takeoffs through that average and both NCSN models. Returns (text, vpvs, note)."""
+    import numpy as np
+    pair = velmodel.ncsn_pair(multmod, code)
+    prim, alt = pair["primary"], pair["alternate"]
+    gn, an = velmodel.read_crt_nodes(prim["crt"]), velmodel.read_crt_nodes(alt["crt"])
+    avg = velmodel.slowness_average(gn, an)
+    err, counts = velmodel.greedy_cut(avg, np.arange(1, 16, 1.0), np.arange(0, 121, 5.0))
+    tops, vp = velmodel.cut(avg, counts)
+    altf = os.path.join(os.path.abspath(work), "ncsn_alternate_stations.del")
+    with open(altf, "w") as f:
+        f.write(open(pair["alternate_stations"]).read().rstrip("\n") + "\n")
+        if alt_extra:
+            f.write(open(alt_extra).read().rstrip("\n") + "\n")
+    b = os.path.basename
+    lines = (f"DEL -1 '{{dir}}/{b(altf)}'",
+             f"CRT 1 '{{dir}}/{b(prim['crt'])}'", f"DEL 1 '{{dir}}/{b(prim['delays'])}'",
+             f"CRT 2 '{{dir}}/{b(alt['crt'])}'", f"DEL 2 '{{dir}}/{b(alt['delays'])}'",
+             f"PSM 1 {prim['psm'][0]} {prim['psm'][1]}", f"PSM 2 {alt['psm'][0]} {alt['psm'][1]}",
+             "ALT 1 2")
+    files = tuple(dict.fromkeys(os.path.abspath(x) for x in
+                                (prim["crt"], alt["crt"], prim["delays"], alt["delays"], altf)))
+    vpvs = vpvs or prim["psm"][0]
+    t = ", ".join(f"{x:.3f}" for x in tops)
+    v = ", ".join(f"{x:.3f}" for x in vp)
+    tk = ", ".join(f"(({', '.join(str(z) for z, _ in nd)}), ({', '.join(str(w) for _, w in nd)}))"
+                   for nd in (gn, an))
+    text = (f'layered_velmodel("{name}", ({t}), ({v}), {vpvs}, hyp_lines={lines!r}, '
+            f'hyp_files={files!r}, takeoff_models=({tk},))')
+    note = (f"NCSN {code.upper()} + alternate {b(alt['crt'])}; HypoDD/SKHASH average cut {counts} "
+            f"(largest P error {err:.1f} ms, 1-15 km deep, 0-120 km)")
+    return text, vpvs, note
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--name", required=True, help="cluster name, e.g. sanramon2015")
@@ -77,9 +116,16 @@ def main(argv=None):
     ap.add_argument("--radius-km", type=float, default=60.0)
     ap.add_argument("--min-sps", type=float, default=100.0)
     ap.add_argument("--velmodel", required=True,
-                    help="'con' (NCSN Concord-Calaveras, Northern California; cut to 20 layers) or a "
-                         "CSV of layers with columns top_km, vp_km_s (<= 20 rows, half-space last)")
-    ap.add_argument("--vpvs", type=float, default=1.747, help="one Vp/Vs for the S model and HypoDD")
+                    help="'con' (NCSN Concord-Calaveras, Northern California; cut to 20 layers), a "
+                         "CSV of layers with columns top_km, vp_km_s (<= 20 rows, half-space last), or "
+                         "'ncsn:<code>' for an NCSN model with an alternate across a fault, e.g. "
+                         "'ncsn:gab' (Bear Valley), read from --ncsn-multmod")
+    ap.add_argument("--ncsn-multmod", help="NCSN multiple-model file (multmod5a.hyp of NCEDC's "
+                                           "hypoinv-standalone package), for --velmodel ncsn:<code>")
+    ap.add_argument("--alternate-extra", help="extra alternate-model stations ('STA   NET  A' lines) "
+                                              "for --velmodel ncsn:<code>, e.g. stations newer than NCSN's list")
+    ap.add_argument("--vpvs", type=float, default=None,
+                    help="one Vp/Vs for the S model and HypoDD (default 1.747; NCSN's PSM value with ncsn:)")
     ap.add_argument("--con-layers", default="5,8,5,1",
                     help="CON layers per gradient segment (+ half-space; 20 in all at most)")
     ap.add_argument("--pre", type=float, default=240.0)
@@ -147,13 +193,23 @@ def main(argv=None):
 
     # 4. PocketQuake orchestrator
     big = cat.loc[cat.magnitude.idxmax()]
-    layers_csv = None if a.velmodel.lower() == "con" else a.velmodel
-    vm_name = ("con" if layers_csv is None else       # names HYPOINVERSE's <name>_p.crh files
-               re.sub(r"[^A-Za-z0-9_]", "_", os.path.splitext(os.path.basename(layers_csv))[0])[:16])
-    counts = tuple(int(x) for x in a.con_layers.split(","))
+    if a.velmodel.lower().startswith("ncsn:"):
+        if not a.ncsn_multmod:
+            raise SystemExit("--velmodel ncsn:<code> needs --ncsn-multmod")
+        code = a.velmodel.split(":", 1)[1]
+        vm_name = f"ncsn_{code.lower()}"[:16]
+        vm_arg, a.vpvs, note = _ncsn_velocity_model_arg(vm_name, code, a.ncsn_multmod, a.alternate_extra,
+                                                        a.work, a.vpvs)
+        print("[velmodel]", note)
+    else:
+        a.vpvs = a.vpvs or 1.747
+        layers_csv = None if a.velmodel.lower() == "con" else a.velmodel
+        vm_name = ("con" if layers_csv is None else       # names HYPOINVERSE's <name>_p.crh files
+                   re.sub(r"[^A-Za-z0-9_]", "_", os.path.splitext(os.path.basename(layers_csv))[0])[:16])
+        counts = tuple(int(x) for x in a.con_layers.split(","))
+        vm_arg = _velocity_model_arg(vm_name, counts, a.vpvs, layers_csv)
     # the station table already is the selection (stage 3); the cluster's own radius cut, measured
     # from this catalog's centroid (a subset's differs), gets a margin so it never cuts again
-    vm_arg = _velocity_model_arg(vm_name, counts, a.vpvs, layers_csv)
     factory_args = (f"velocity_models=({vm_arg},), "
                     f"sensors={tuple(bands)!r}, radius_km={a.radius_km + 10}, hypodd_vpvs={a.vpvs}, "
                     f'mainshock_event_id="{event_id(big.time)}", '

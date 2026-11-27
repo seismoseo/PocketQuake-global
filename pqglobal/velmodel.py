@@ -110,3 +110,78 @@ def best_cut(nodes, depths, dists, max_layers=MAX_LAYERS):
         if best is None or e < best[0]:
             best = (e, counts)
     return best
+
+
+def greedy_cut(nodes, depths, dists, max_layers=MAX_LAYERS):
+    """Like best_cut, but greedy (for models with many gradient segments): one layer per segment,
+    then one layer at a time to the segment whose split lowers the largest P error most."""
+    ref = reference_times(nodes, depths, dists)
+    counts = [1] * (len(nodes) - 1)
+
+    def err(c):
+        tops, vel = cut(nodes, c)
+        return np.abs(errors(tops, vel, depths, dists, ref)).max()
+    while sum(counts) < max_layers - 1:
+        trials = []
+        for i in range(len(counts)):
+            c = list(counts)
+            c[i] += 1
+            trials.append((err(c), c))
+        counts = min(trials, key=lambda t: t[0])[1]
+    return err(counts), tuple(counts)
+
+
+# ----------------------------------------------------------------------- NCSN multiple models
+def read_crt_nodes(path):
+    """((depth_km, vp_km_s), ...) of an NCSN gradient model file (.crt, as read by HYPOINVERSE's CRT
+    command): header line 2 holds the node depths, line 3 the velocities, F5.2 each."""
+    with open(path) as f:
+        lines = f.read().splitlines()
+    fields = lambda s: [float(s[i:i + 5]) for i in range(0, len(s.rstrip()), 5) if s[i:i + 5].strip()]
+    z, v = fields(lines[1]), fields(lines[2])
+    if len(z) != len(v) or z[0] != 0.0:
+        raise ValueError(f"{path}: cannot read the node lines of this .crt file")
+    return tuple(zip(z, v))
+
+
+def ncsn_pair(multmod_path, code):
+    """NCSN's setup of model `code` (e.g. 'gab') and its alternate, from its multiple-model command
+    file (multmod5a.hyp): their .crt files, delay files, P-to-S ratios and the alternate-station
+    file, exactly as NCSN reads them. Paths are resolved against the file's folder."""
+    import os
+    import re
+    base = os.path.dirname(os.path.abspath(multmod_path))
+    crt, dly, psm, alt, altfile = {}, {}, {}, {}, None
+    for raw in open(multmod_path):
+        m = re.match(r"\s*(crt|del|psm|alt)\s+(-?\d+)\s+(.*)$", raw, re.IGNORECASE)
+        if not m:                                     # comments (*), nod, mul, pos, ...
+            continue
+        cmd, n, rest = m.group(1).lower(), int(m.group(2)), m.group(3)
+        if cmd in ("crt", "del"):
+            path = os.path.normpath(os.path.join(base, re.search(r"'([^']+)'", rest).group(1)))
+            if cmd == "crt":
+                crt[n] = path
+            elif n == -1:
+                altfile = path
+            else:
+                dly[n] = path
+        elif cmd == "psm":
+            x = rest.split()
+            psm[n] = (float(x[0]), float(x[1]))
+        else:
+            alt[n] = int(rest.split()[0])
+    prim = [n for n, p in crt.items() if os.path.basename(p).lower() == f"{code.lower()}.crt"]
+    if not prim or prim[0] not in alt:
+        raise ValueError(f"{multmod_path}: no model '{code}' with an alternate (ALT) found")
+    p, a = prim[0], alt[prim[0]]
+    return dict(primary=dict(crt=crt[p], delays=dly.get(p), psm=psm.get(p, (1.75, 0.0))),
+                alternate=dict(crt=crt[a], delays=dly.get(a), psm=psm.get(a, (1.75, 0.0))),
+                alternate_stations=altfile)
+
+
+def slowness_average(nodes_a, nodes_b):
+    """Gradient-model nodes at the union of both models' node depths, velocity = harmonic mean
+    (the slowness average) of the two models there; constant below the last node."""
+    z = sorted({d for d, _ in nodes_a} | {d for d, _ in nodes_b})
+    va, vb = _v_at(nodes_a, np.array(z)), _v_at(nodes_b, np.array(z))
+    return tuple((float(d), float(round(2 / (1 / x + 1 / y), 4))) for d, x, y in zip(z, va, vb))
