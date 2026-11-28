@@ -7,7 +7,9 @@
   middle  NCSN's catalog (ComCat) against PocketQuake-global's relocation (HypoDD with cross-correlation)
   right   both along strike against depth, from the mainshock
 
-    python examples/pinnacles2026/figure.py [--out docs/images/pinnacles2026.png]
+    python examples/pinnacles2026/figure.py [--out work/pinnacles2026/pinnacles2026.png]
+
+The README shows the reference run's copy of this figure (docs/images/pinnacles2026.png).
 """
 from __future__ import annotations
 
@@ -56,7 +58,7 @@ def main():
     ap.add_argument("--run-dir", default=str(KCR / "pipeline" / "runs" / "pinnacles2026"))
     ap.add_argument("--cluster-dir", default=str(KCR / "Pinnacles2026_cluster"))
     ap.add_argument("--work", default=str(REPO / "work" / "pinnacles2026"))
-    ap.add_argument("--out", default=str(REPO / "docs" / "images" / "pinnacles2026.png"))
+    ap.add_argument("--out", default=str(REPO / "work" / "pinnacles2026" / "pinnacles2026.png"))
     a = ap.parse_args()
     cat = pd.read_csv(HERE / "comcat_sequence.csv")
     rel = relocated(Path(a.run_dir), cat)

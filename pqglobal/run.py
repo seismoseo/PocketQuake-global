@@ -1,7 +1,7 @@
 """pocketquake-global: from a USGS catalog to PocketQuake's relocation chain, via FDSN.
 
 Stages (each one writes into --work and is reused on a rerun):
-  1. catalog       USGS ComCat query (box or circle, UTC) or a ComCat CSV -> event_catalog.csv
+  1. catalog       USGS ComCat query (box, UTC) or a ComCat CSV export -> event_catalog.csv
                    (--largest N keeps the N largest events, e.g. for a validation subset)
   2. picks         the network's own picks for those events (FDSN event service) -> network_picks.csv
   3. stations      the stations the network picked, within --radius-km, with a three-component
@@ -115,20 +115,24 @@ def onset_events(cat, onset_mag):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    ap = argparse.ArgumentParser(prog="pocketquake-global", description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--name", required=True, help="cluster name, e.g. sanramon2015")
     ap.add_argument("--region", required=True, help="display name, e.g. SanRamon2015")
     ap.add_argument("--work", required=True, help="working directory for stages 1-3")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--usgs-box", help="lat0,lat1,lon0,lon1 (ComCat query)")
     g.add_argument("--catalog-csv", help="a ComCat CSV export")
-    ap.add_argument("--start"), ap.add_argument("--end")
-    ap.add_argument("--minmag", type=float)
+    ap.add_argument("--start", help="catalog start, UTC (YYYY-MM-DD[THH:MM:SS]), with --usgs-box")
+    ap.add_argument("--end", help="catalog end, UTC, with --usgs-box")
+    ap.add_argument("--minmag", type=float, help="smallest catalog magnitude")
     ap.add_argument("--largest", type=int, help="keep only the N largest events")
     ap.add_argument("--picks-service", help="FDSN event service with picks (default from ids)")
-    ap.add_argument("--data-service", default="NCEDC", help="FDSN station/dataselect service")
-    ap.add_argument("--radius-km", type=float, default=60.0)
-    ap.add_argument("--min-sps", type=float, default=100.0)
+    ap.add_argument("--data-service", default="NCEDC",
+                    help="FDSN station/dataselect service (default NCEDC; SCEDC for Southern California, ci ids)")
+    ap.add_argument("--radius-km", type=float, default=60.0,
+                    help="stations the network picked, within this distance of the catalog centroid (default 60)")
+    ap.add_argument("--min-sps", type=float, default=100.0,
+                    help="three-component sensors at this sampling rate or more (default 100)")
     ap.add_argument("--velmodel", required=True,
                     help="'con' (NCSN Concord-Calaveras, Northern California; cut to 20 layers), a "
                          "CSV of layers with columns top_km, vp_km_s (<= 20 rows, half-space last), or "
@@ -142,9 +146,9 @@ def main(argv=None):
                     help="one Vp/Vs for the S model and HypoDD (default 1.747; NCSN's PSM value with ncsn:)")
     ap.add_argument("--con-layers", default="5,8,5,1",
                     help="CON layers per gradient segment (+ half-space; 20 in all at most)")
-    ap.add_argument("--pre", type=float, default=240.0)
-    ap.add_argument("--post", type=float, default=360.0)
-    ap.add_argument("--fetch-workers", type=int, default=2)
+    ap.add_argument("--pre", type=float, default=240.0, help="waveform start, s before the origin (default 240)")
+    ap.add_argument("--post", type=float, default=360.0, help="waveform end, s after the origin (default 360)")
+    ap.add_argument("--fetch-workers", type=int, default=2, help="parallel waveform downloads (default 2)")
     ap.add_argument("--cores", type=int, default=2, help="xcorr worker cap (memory!)")
     ap.add_argument("--onset-mag", default="2.0",
                     help="cross-correlate every event pair that includes an event of at least this "
@@ -160,8 +164,9 @@ def main(argv=None):
                     help="policy for missing orientation epochs (default: error)")
     ap.add_argument("--rotation-reference", type=_rotation_reference, metavar="LAT,LON",
                     help="shared source point for R/T back azimuths (default: each event)")
-    ap.add_argument("--stop-after", choices=("catalog", "picks", "stations", "run"), default="run")
-    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--stop-after", choices=("catalog", "picks", "stations", "run"), default="run",
+                    help="stop after this stage, e.g. stations to inspect the station set first")
+    ap.add_argument("--apply", action="store_true", help="download and run; without it, only print the plan")
     a = ap.parse_args(argv)
     if (not a.s_on_t and not a.orientation_csv
             and (a.orientation_missing is not None or a.rotation_reference is not None)):

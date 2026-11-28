@@ -1,10 +1,15 @@
 #!/bin/bash
 # The November 2026 Pinnacles sequence (central California), the main benchmark: the 176 USGS ComCat events
-# within 15 km of the Mw 4.98 mainshock of 20 Nov 2026 (nc75468702), 1-28 Nov 2026, on the creeping section of
-# the San Andreas fault. NCEDC picks, stations and waveforms; NCSN's own Bear Valley velocity setup.
+# within 15 km of the Mw 4.98 mainshock of 20 Nov 2026 (nc75468702), from 1 to 27 Nov 2026, on the creeping
+# section of the San Andreas fault. NCEDC picks, stations and waveforms; NCSN's own Bear Valley velocity setup.
 #
-#   ./examples/pinnacles2026.sh            dry run: catalog, network picks, station set, then the plan
-#   ./examples/pinnacles2026.sh apply      + download waveforms and run the whole pipeline
+#   ./examples/pinnacles2026.sh                   dry run: catalog, network picks, station set, then the plan
+#   CORES=6 ./examples/pinnacles2026.sh apply     + download waveforms and run the whole pipeline (the
+#                                                 reference run used 6 cross-correlation workers)
+#   ALT_EXTRA= ./examples/pinnacles2026.sh apply  the variant with NCSN's alternate list as distributed
+#                                                 (cluster pinnacles2026_ncsnlist, kept separate)
+#
+# Then: python examples/pinnacles2026/check.py, figure.py, compare_ddrt.py (examples/pinnacles2026/README.md).
 #
 # Inputs (examples/pinnacles2026/README.md): the ComCat catalog as exported on 2026-11-27 (kept, so the
 # benchmark does not change when ComCat does) and the 10 stations east of the fault that are newer than NCSN's
@@ -13,14 +18,15 @@
 # On a GPU shared with other jobs, limit its memory, e.g.  XCORR_VRAM_FRACTION=0.1 XCORR_VRAM_CAP=0.15
 set -euo pipefail
 
+ALT_EXTRA=${ALT_EXTRA-examples/pinnacles2026/alternate_extra_newer_stations.txt}   # empty: NCSN's list only
 NAME=pinnacles2026              # cluster name
 REGION=Pinnacles2026            # display name / source folder prefix
+[ -z "$ALT_EXTRA" ] && { NAME=pinnacles2026_ncsnlist; REGION=Pinnacles2026NcsnList; }
 DATA=examples/pinnacles2026
 CATALOG=$DATA/comcat_sequence.csv
 RADIUS_KM=60                    # stations the network picked, within this distance of the catalog centroid
 MIN_SPS=100                     # three-component sensors at this sampling rate or more
 VELMODEL=ncsn:gab               # NCSN Bear Valley: Gabilan (Pacific side) + Diablo for the alternate list
-ALT_EXTRA=$DATA/alternate_extra_newer_stations.txt
 ONSET_MAG=2.0                   # pairs with an event of M >= 2 are cross-correlated on the onset only
 CORES=${CORES:-2}               # cross-correlation worker cap (memory on a shared machine)
 NCSN_URL=https://ncedc.org/pub/catalogs/ncsn/hypoinverse/hypoinv-standalone-20230210.zip
@@ -39,8 +45,8 @@ if [ ! -f "$NCSN/multmod5a.hyp" ]; then
 fi
 ARGS=(--name "$NAME" --region "$REGION" --work "$WORK" --catalog-csv "$CATALOG"
       --radius-km "$RADIUS_KM" --min-sps "$MIN_SPS" --cores "$CORES"
-      --velmodel "$VELMODEL" --ncsn-multmod "$NCSN/multmod5a.hyp" --alternate-extra "$ALT_EXTRA"
-      --onset-mag "$ONSET_MAG")
+      --velmodel "$VELMODEL" --ncsn-multmod "$NCSN/multmod5a.hyp" --onset-mag "$ONSET_MAG")
+[ -n "$ALT_EXTRA" ] && ARGS+=(--alternate-extra "$ALT_EXTRA")
 
 if [ "${1:-}" = "apply" ]; then
     python -m pqglobal.run "${ARGS[@]}" --apply

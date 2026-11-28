@@ -10,6 +10,10 @@ reference values of PocketQuake-global v0.3.0:
               the mainshock (principal axis): its strike, the scatter across it (sd), the mainshock's distance
               from it; aftershocks south-east of the mainshock along strike 137.12 deg; distance south-west
               of the USGS NSHM23 fault trace
+  ldeo_ddrt   against LDEO's real-time double-difference catalog (an independent relocation; the excerpt
+              ldeo_ddrt_sequence.txt), on the events both relocated: the offset between the two clouds, the
+              differences left after removing it, the width of the line in each (compare_ddrt.py), the plane
+              fitted to the aftershocks and its angle to the USGS Mww and NC moment-tensor planes
 
     python examples/pinnacles2026/check.py
 """
@@ -18,7 +22,6 @@ from __future__ import annotations
 import argparse
 import glob
 import json
-import os
 from pathlib import Path
 
 import sys
@@ -38,7 +41,7 @@ NC_MT = (137.12, 72.56, 175.92)
 STRIKE = 137.12
 RELOC_COLS = ["id", "lat", "lon", "depth", "x", "y", "z", "ex", "ey", "ez", "yr", "mo", "dy", "hr", "mi",
               "sc", "mag", "nccp", "nccs", "nctp", "ncts", "rcc", "rct", "cid"]
-# v0.3.0 on 2026-11-28 (pq-gpu environment: PyTorch 2.11 cu128, NVIDIA RTX PRO 6000 Blackwell)
+# v0.3.0, one run from an empty folder on 2026-11-28 (PyTorch 2.11 with CUDA 12.8, NVIDIA RTX PRO 6000 Blackwell)
 REFERENCE = json.load(open(HERE / "reference.json")) if (HERE / "reference.json").is_file() else {}
 
 
@@ -124,6 +127,16 @@ def main():
     ap.add_argument("--write-reference", action="store_true", help="store these values as the reference")
     a = ap.parse_args()
     run, work = Path(a.run_dir), Path(a.work)
+    need = [work / "event_catalog.csv", work / "network_picks.csv", run / "picks",
+            run / "2.HypoDD" / "01.dt.ct" / "hypoDD.reloc", run / "2.HypoDD" / "02.dt.cc" / "hypoDD.reloc"]
+    need += [p for p in (glob.glob(str(run / "1.HypoInv" / "*" / "*.sum"))[:1] or [run / "1.HypoInv/<model>/*.sum"])]
+    need += [p for p in (glob.glob(str(run / "3.FocalMech" / "*" / "mechanisms.csv"))[:1] or [run / "3.FocalMech/<model>/mechanisms.csv"])]
+    missing = [str(p) for p in need if not Path(p).exists()]
+    if missing:
+        raise SystemExit("the run is not finished (run examples/pinnacles2026.sh apply first); missing:\n  "
+                         + "\n  ".join(missing))
+    if not REFERENCE and not a.write_reference:
+        print(f"note: no {HERE / 'reference.json'}; the reference column stays empty")
     cat = pd.read_csv(work / "event_catalog.csv")
     cat["eid"] = [event_id(t) for t in cat.time]
     res = {}
@@ -160,6 +173,21 @@ def main():
     res["shape_dtcc"] = shape(cc.lat.values, cc.lon.values, cc.event.values, cc.time.values)
     res["shape_ncsn_catalog"] = shape(cat.latitude.values, cat.longitude.values, cat.source_id.values,
                                       pd.to_datetime(cat.time).dt.tz_localize(None).values)
+    # against LDEO's real-time double-difference catalog
+    import compare_ddrt as cd
+    r = cd.compare(cc[["event", "lat", "lon", "depth"]], pd.read_csv(HERE / "comcat_sequence.csv"),
+                   cd.read_ddrt(HERE / "ldeo_ddrt_sequence.txt"), cd.trace_segments(HERE / "usgs_nshm23_san_andreas.geojson"))[0]
+    o, d, rel = r["catalogs"]["ours"], r["catalogs"]["ddrt"], r["relative_after_shift"]
+    res["ldeo_ddrt"] = dict(compared=r["compared"], offset_horizontal_m=r["shift_ddrt_minus_ours_m"]["horizontal"],
+                            offset_down_m=r["shift_ddrt_minus_ours_m"]["down"],
+                            along_median_m=rel["along_strike"]["median_m"], across_median_m=rel["across_strike"]["median_m"],
+                            depth_median_m=rel["depth"]["median_m"], width_m=[o["width_m"], d["width_m"]],
+                            off_line_gt_0p5km=[o["off_line_gt_0p5km"], d["off_line_gt_0p5km"]],
+                            ldeo_off_line_from_preliminary_input=d["off_line_from_preliminary_input"],
+                            aftershocks=r["aftershocks"], plane=[o["plane_strike"], o["plane_dip"]],
+                            plane_dip_95pct=o["plane_dip_95pct"],
+                            plane_to_usgs_mww_deg=o["angle_to_moment_tensors"]["USGS Mww"]["deg"],
+                            plane_to_nc_mt_deg=o["angle_to_moment_tensors"]["NC moment tensor"]["deg"])
     if a.write_reference:
         json.dump(res, open(HERE / "reference.json", "w"), indent=1)
     rows = []

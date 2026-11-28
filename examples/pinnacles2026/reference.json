@@ -1,0 +1,72 @@
+{
+ "picks_P": {
+  "pairs": 258,
+  "median_abs_s": 0.01,
+  "within_0p1": 0.938
+ },
+ "picks_S": {
+  "pairs": 75,
+  "median_abs_s": 0.03,
+  "within_0p1": 0.907
+ },
+ "located": {
+  "events": 176,
+  "hypoinverse": 176,
+  "hypodd_dtct": 163,
+  "hypodd_dtcc": 172,
+  "hypoinverse_median_rms_s": 0.19
+ },
+ "mechanisms": {
+  "events": 175,
+  "quality_A_or_B": 77,
+  "quality_A_or_B_single_solution": 57,
+  "mainshock": [
+   137.9,
+   88.7,
+   179.7
+  ],
+  "mainshock_kagan_to_nc_mt_deg": 16.6
+ },
+ "shape_dtcc": {
+  "line_strike_deg": 135.6,
+  "across_line_sd_m": 153,
+  "mainshock_off_line_m": -3,
+  "aftershocks_southeast": 0.794,
+  "km_southwest_of_trace_median": 0.95
+ },
+ "shape_ncsn_catalog": {
+  "line_strike_deg": 132.5,
+  "across_line_sd_m": 1124,
+  "mainshock_off_line_m": -1964,
+  "aftershocks_southeast": 0.834,
+  "km_southwest_of_trace_median": 2.16
+ },
+ "ldeo_ddrt": {
+  "compared": 169,
+  "offset_horizontal_m": 523,
+  "offset_down_m": -399,
+  "along_median_m": 63,
+  "across_median_m": 77,
+  "depth_median_m": 216,
+  "width_m": [
+   112,
+   160
+  ],
+  "off_line_gt_0p5km": [
+   1,
+   11
+  ],
+  "ldeo_off_line_from_preliminary_input": 11,
+  "aftershocks": 151,
+  "plane": [
+   136.1,
+   83.8
+  ],
+  "plane_dip_95pct": [
+   81.5,
+   85.7
+  ],
+  "plane_to_usgs_mww_deg": 2.1,
+  "plane_to_nc_mt_deg": 11.3
+ }
+}

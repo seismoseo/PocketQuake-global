@@ -6,11 +6,14 @@ Versioning follows [Semantic Versioning](https://semver.org/). The single source
 ## 0.3.0 — 2026-11-28
 
 **Benchmark: the November 2026 Pinnacles sequence** (`examples/pinnacles2026.sh`): the 176 USGS ComCat events
-within 15 km of the Mw 4.98 mainshock of 20 Nov 2026 on the creeping section of the San Andreas fault, end
-to end, with `examples/pinnacles2026/check.py` (the benchmark numbers beside the reference values) and
+within 15 km of the Mw 4.98 mainshock of 20 Nov 2026 (1-27 November) on the creeping section of the San
+Andreas fault, end to end, documented in `examples/pinnacles2026/README.md`, with `examples/pinnacles2026/check.py` (the benchmark numbers beside the reference values) and
 `examples/pinnacles2026/figure.py` (the README figure). Inputs: the ComCat export as of 2026-11-27, the 10
 east-side stations newer than NCSN's alternate list, the USGS NSHM23 fault trace; NCSN's HYPOINVERSE
-package is downloaded from NCEDC and checked.
+package is downloaded from NCEDC and checked. Reference relocation: LDEO's real-time double-difference
+catalog (Waldhauser 2009), its lines for the 176 events as of 2026-11-28, with
+`examples/pinnacles2026/compare_ddrt.py` (offset, relative differences, width of the line, fault plane;
+figure) and the same numbers in `check.py`.
 
 **Added**
 - `--velmodel ncsn:<code>` with `--ncsn-multmod` (NCSN's `multmod5a.hyp`) and `--alternate-extra`: NCSN's
@@ -24,8 +27,12 @@ package is downloaded from NCEDC and checked.
 - Offline tests for both.
 
 **Changed**
-- The onset window is on by default. Runs made with 0.2.0 or earlier (such as the San Ramon validation
-  below) did not use it; pass `--onset-mag none` to repeat them exactly.
+- The onset window is on by default. Runs made with 0.2.0 or earlier (such as the San Ramon validation)
+  did not use it; pass `--onset-mag none` to repeat them exactly. `examples/sanramon2015.sh` now does.
+- README: install commands, the external tools PocketQuake-global needs (incl. `ncsn2pha`) and those it
+  does not, editable install only, what the benchmark needs (GPU, about 170 GB of disk, network), where
+  its results land, how to read `check.py`, references. Help text for every command-line option.
+- `pyproject.toml`: SPDX license expression (setuptools >= 77), project URLs, classifiers.
 
 **Depends on** PocketQuake v1.18.0 (pipeline: several HYPOINVERSE models per run, onset window for global
 clusters, `XCORR_VRAM_FRACTION` / `XCORR_VRAM_CAP` for a shared GPU).

@@ -34,45 +34,88 @@ events of the 2015 San Ramon swarm ([Validation](#validation-san-ramon-2015)).
 ## Install
 
 ```bash
-git clone --recurse-submodules --shallow-submodules https://github.com/seismoseo/PocketQuake-global
+git clone --recurse-submodules https://github.com/seismoseo/PocketQuake-global
 cd PocketQuake-global
+conda env create -f external/PocketQuake/environment.yml   # PocketQuake's environment, "pocketquake"
+conda activate pocketquake
+pip install -e .                 # editable: the package finds the pipeline in external/
+cp .env.example .env             # then fill in the tool paths (3 below)
 ```
 
-1. **Environment.** Use PocketQuake's environment (`external/PocketQuake/environment.yml`). It
-   provides ObsPy, the PhaseNet+ picker (EQNet, PyTorch) and the notebook tools. For GPU
-   cross-correlation, PyTorch must support your card (e.g. a cu128 build for RTX Blackwell);
-   without a usable GPU the CPU path runs and gives the same results, more slowly.
-2. **External tools.** HYPOINVERSE, HypoDD (with ph2dt and ncsn2pha), SKHASH and EQNet, exactly
-   as for PocketQuake: `external/PocketQuake/docs/EXTERNAL_TOOLS.md`.
-3. **Tool paths.** Copy `.env.example` to `.env` and fill in `EQNET_DIR`, `SKHASH_DIR` and,
-   optionally, `HELVETICA_DIR`. No data-centre credentials are needed.
-4. Optionally `pip install -e .` for a `pocketquake-global` command; otherwise run
-   `python -m pqglobal.run` from the repository.
+1. **Environment.** PocketQuake's environment provides ObsPy, the PhaseNet+ picker (EQNet, PyTorch)
+   and the notebook tools. Skip the `necis-downloader` and Playwright lines in that file's header: they
+   serve PocketQuake's Korean data portals, which PocketQuake-global does not use. Install
+   PocketQuake-global in editable mode only; a regular `pip install .` copies the package away from
+   its submodules, and `import pqglobal` then reports the submodule as missing.
+2. **GPU.** The cross-correlation of all event pairs runs on the GPU through PyTorch, so PyTorch must
+   support the card (for example a CUDA 12.8 build for an RTX Blackwell card). Without a usable GPU
+   the pipeline falls back to the CPU: the same differential times, but days instead of an hour for
+   the benchmark's 15,400 event pairs.
+3. **External tools**, built as described in PocketQuake's
+   [EXTERNAL_TOOLS.md](https://github.com/seismoseo/PocketQuake/blob/v1.18.0/docs/EXTERNAL_TOOLS.md):
+
+   | tool | for | where |
+   |---|---|---|
+   | `hyp1.40` (HYPOINVERSE-2000) | absolute locations | on `PATH` |
+   | `ph2dt`, `hypoDD`, `ncsn2pha` (HypoDD distribution) | relocation | on `PATH` |
+   | EQNet with the PhaseNet+ weights | picking | `EQNET_DIR` in `.env` |
+   | SKHASH | focal mechanisms | `SKHASH_DIR` in `.env` |
+
+   PocketQuake's other tools (`mseed2sac`, `bsdtar`, the STP client, the KIGAM key) belong to its
+   Korean data sources and are not needed. No data-centre account is needed either. The benchmark
+   script also uses `curl`, `unzip` and `sha256sum` (or `shasum`).
+4. **Optional.** PyGMT for the benchmark figures (`conda install -c conda-forge pygmt`); pytest for the
+   offline tests (`pip install -e '.[test]'`, then `pytest -q tests`: no network, no seismic tools).
 
 On a GPU shared with other jobs, limit the cross-correlation's GPU memory, e.g.
 `XCORR_VRAM_FRACTION=0.1 XCORR_VRAM_CAP=0.15` (batches up to 10 % of the free memory, the process up
-to 15 % of the card; the differential times do not depend on it). The benchmark figure needs PyGMT.
-
-`pytest -q tests` runs the offline tests (no network, no seismic tools).
+to 15 % of the card; the differential times do not depend on it).
 
 ## Benchmark: the 2026 Pinnacles sequence
 
 The 176 USGS ComCat events within 15 km of the Mw 4.98 mainshock of 20 November 2026
-(nc75468702), 1–28 November 2026, on the creeping section of the San Andreas fault near Pinnacles,
-California. NCEDC picks, stations and waveforms; NCSN's own Bear Valley velocity setup (two models
-across the fault); pairs with an event of M ≥ 2 cross-correlated on the onset.
+(nc75468702), from 1 to 27 November 2026, on the creeping section of the San Andreas fault near
+Pinnacles, California. NCEDC picks, stations and waveforms; NCSN's own Bear Valley velocity setup (two
+models across the fault); pairs with an event of M ≥ 2 cross-correlated on the onset. Every input,
+and every file of the benchmark, is described in [`examples/pinnacles2026/`](examples/pinnacles2026/README.md).
+
+**Before you run it**, you need:
+- a GPU that PyTorch can use (the reference run: PyTorch 2.11 with CUDA 12.8 on an NVIDIA RTX PRO
+  6000 Blackwell, shared with other jobs, with the memory limits of [Install](#install));
+- about 170 GB free on the disk that holds the clone, because the pipeline writes inside the nested
+  submodule `external/PocketQuake/external/korea-cluster-relocation/`: the trace cache takes 157 GB,
+  the waveforms 5 GB and the run folder 5 GB;
+- network access to NCEDC (FDSN services, and ncedc.org for NCSN's HYPOINVERSE package);
+- about 3 h 40 min on the reference machine (Results table below).
 
 ```bash
-./examples/pinnacles2026.sh                # dry run: catalog, NCSN picks, the 42 stations, plan
-./examples/pinnacles2026.sh apply          # download (~35 min) and the whole chain
-python examples/pinnacles2026/check.py     # the numbers below, beside the reference values
-python examples/pinnacles2026/figure.py    # the figure above (PyGMT)
+./examples/pinnacles2026.sh                    # dry run: catalog, NCSN picks, the 42 stations, plan
+CORES=6 ./examples/pinnacles2026.sh apply      # download and the whole chain (reference: 6 workers)
+python examples/pinnacles2026/check.py         # the numbers below, beside the reference values
+python examples/pinnacles2026/figure.py        # the figure at the top (PyGMT)
+python examples/pinnacles2026/compare_ddrt.py  # the comparison with LDEO below (PyGMT)
 ```
 
-The inputs are in [`examples/pinnacles2026/`](examples/pinnacles2026/README.md): the ComCat export as
-of 27 November (kept, so the benchmark does not move when ComCat does), and the 10 stations east of the
-fault that are newer than NCSN's alternate-model list. NCSN's HYPOINVERSE package is downloaded from
-NCEDC and checked.
+**Where the results land.**
+- `work/ncsn_hypoinverse/`: NCSN's HYPOINVERSE package, downloaded once and checked against its SHA-256.
+- `work/pinnacles2026/`: the first three stages (`event_catalog.csv`, `network_picks.csv`,
+  `station_table/`, where `sensors.csv` says why each picked sensor was used or not), and the figures
+  of `figure.py` (`pinnacles2026.png`) and `compare_ddrt.py` (`ldeo_ddrt/`, with its numbers).
+- In `external/PocketQuake/external/korea-cluster-relocation/`: `Pinnacles2026_cluster/` (waveforms and
+  station files), `pipeline/runs/pinnacles2026/` (picks, `1.HypoInv/`, `2.HypoDD/`, `3.FocalMech/`, and
+  the PDF report in `summary/`), and the results notebook in `pipeline/notebooks/`.
+
+The images in this README are copies, in `docs/images/`, of the reference run's figures.
+
+**Reading `check.py`.** One line per quantity: its value in your run and in the reference run
+([`reference.json`](examples/pinnacles2026/reference.json)). `picks_P` and `picks_S` compare
+PhaseNet+ with NCSN's analyst picks; `located` and `mechanisms` count events; `shape_dtcc` and
+`shape_ncsn_catalog` describe the line of epicenters (in `mainshock_off_line_m`, positive is
+south-west of the line, negative north-east); in `ldeo_ddrt`, a pair of values is
+[PocketQuake-global, LDEO]. The reference values come from one run from an empty folder on the
+reference machine. Another PyTorch build or GPU can change a few picks, and the numbers with them:
+counts by a few events, medians by milliseconds, positions and widths by metres to tens of metres
+(see [Known limitations](#known-limitations)).
 
 | | PocketQuake-global v0.3.0 |
 |---|---|
@@ -80,27 +123,51 @@ NCEDC and checked.
 | PhaseNet+ P picks against NCSN's analyst picks | median difference 0.01 s; 94 % within 0.1 s (258 pairs) |
 | S picks | median 0.03 s; 91 % within 0.1 s (75 pairs) |
 | located | 176 / 176 (HYPOINVERSE, median RMS 0.19 s); 163 (HypoDD dt.ct); 172 (HypoDD dt.cc) |
-| focal mechanisms (SKHASH) | 175; 80 of quality A or B; the mainshock 16° (Kagan angle) from the NC moment tensor |
-| run time (GPU) | ⟨RUNTIME⟩ |
+| focal mechanisms (SKHASH) | 175; 77 of quality A or B; the mainshock 17° (Kagan angle) from the NC moment tensor |
+| run time (GPU) | 3 h 37 min end to end: waveform download ~30 min, picking 26 min, cross-correlation 61 min, bootstrap error bars for the notebook 74 min |
 
 What the relocation adds, along the line of epicenters within 6 km of the mainshock:
 
 | | NCSN catalog | PocketQuake-global (dt.cc) |
 |---|---:|---:|
-| scatter across the line (sd) | 1,124 m | 152 m |
-| mainshock from the line | 1,964 m north-east | 5 m |
+| scatter across the line (sd) | 1,124 m | 153 m |
+| mainshock from the line | 1,964 m north-east | 3 m |
 | aftershocks south-east of the mainshock | 83 % | 79 % |
-| median distance south-west of the mapped fault trace | 2.16 km | 0.96 km |
+| median distance south-west of the mapped fault trace | 2.16 km | 0.95 km |
 
 The relocated sequence is a sharp line parallel to the fault, with the mainshock on it. NCSN's catalog puts
 the mainshock about 2 km north-east of its own aftershock cloud.
 
+**Against an independent relocation: LDEO's real-time double-difference catalog.** LDEO relocates every NCSN
+event in real time (Waldhauser 2009), from NCSN's picks and waveform cross-correlation, relative to the
+events of its 1984–2021 base catalog. Its picks, stations, velocity model and reference events all differ
+from PocketQuake-global's. The benchmark keeps LDEO's lines for its events as of 28 November 2026;
+`compare_ddrt.py` makes the figure and the numbers below.
+
+![The same events in NCSN's catalog, LDEO's real-time double-difference catalog and PocketQuake-global: maps and depth sections across the fault](docs/images/pinnacles2026_ldeo_ddrt.png)
+
+| the same 169 events | NCSN catalog | LDEO real-time DD | PocketQuake-global |
+|---|---:|---:|---:|
+| width across the fault (IQR/1.349)¹ | 1,081 m | 160 m | 112 m |
+| events more than 0.5 km off the line¹ | 92 of 156 | 11 of 155 | 1 of 157 |
+| median distance south-west of the fault trace | 2.17 km | 0.51 km | 0.95 km |
+| plane fitted to the 151 aftershocks (dip, 95 % range) | 308/69 (61–77°) | 312/83 (71–90°) | 136/84 (82–86°) |
+
+¹ Events from 4 km north-west to 7 km south-east of the mainshock.
+
+LDEO's events lie 518 m east, 75 m north and 399 m shallower than PocketQuake-global's (median); neither
+position is ground truth. After removing that offset, the same events differ by a median of 63 m along
+strike, 77 m across and 216 m in depth. PocketQuake-global's line is narrower, and its aftershocks resolve
+the fault plane: 136/84, at 2.1° from the USGS Mww plane (135/82) and 11.3° from the NC moment
+tensor plane (137/73), which dips less steeply. On that date LDEO had relocated 149 of the 152 events after the mainshock
+from NCSN's first, preliminary solutions, among them all 11 events it puts more than 0.5 km off the line.
+A later copy of LDEO's catalog may agree more closely.
+
 **NCSN's alternate list.** NCSN's Bear Valley setup gives the Diablo model to the stations in its
 alternate list (east of the fault), last updated for stations installed up to spring 2013. Ten of the
 benchmark's stations are east of the fault and newer; `--alternate-extra` adds them. With NCSN's list
-alone they get the Pacific-side model: the median HYPOINVERSE RMS is 0.28 s instead of 0.19 s, 62
-instead of 80 mechanisms reach quality A or B, and the relocated line lies 0.58 km farther south-west
-with the same shape (to 7 m).
+alone they get the Pacific-side model: the median HYPOINVERSE RMS is 0.28 s instead of 0.19 s, and the
+relocated line lies 0.58 km farther south-west with the same shape (to 7 m).
 
 ## Use
 
@@ -117,7 +184,7 @@ runs
 ```bash
 python -m pqglobal.run --name sanramon2015 --region SanRamon2015 --work work/sanramon2015 \
     --usgs-box 37.75,37.83,-122.01,-121.91 --start 2015-10-01 --end 2015-12-01 \
-    --velmodel con --radius-km 60 --cores 2 [--stop-after stations] [--apply]
+    --velmodel con --radius-km 60 --cores 2 --onset-mag none [--stop-after stations] [--apply]
 ```
 
 and the Pinnacles benchmark adds NCSN's two-model setup:
@@ -133,7 +200,9 @@ Stages 1–3 (catalog, picks, stations) write into `--work` and are reused on a 
 `--stop-after stations` lets you inspect `station_table/sensors.csv`, where every picked sensor in
 the radius is listed with why it was used or not, before anything is downloaded. Without
 `--apply` the command only prints the cluster it would build. `--largest N` keeps the N largest
-events, for a quick test.
+events, for a quick test. Stations and waveforms come from `--data-service` (default NCEDC; for
+Southern California events, `ci` ids, use SCEDC), picks from the network's own event service, chosen
+from the event ids (`--picks-service` overrides it).
 
 Results land where PocketQuake puts them: the cluster source folder and
 `pipeline/runs/<name>/` inside `external/PocketQuake/external/korea-cluster-relocation/`, the
@@ -166,7 +235,7 @@ metadata azimuth again would apply the same correction twice.
 0 degrees for unmatched epochs, and `skip` omits their R/T traces and S measurements. The
 optional `--rotation-reference LAT,LON` uses one shared source point for every back azimuth;
 the default uses each event's coordinates. Table schema, interval boundaries, repair options
-and provenance are documented in [PocketQuake's orientation manual](external/PocketQuake/docs/orientation.md).
+and provenance are documented in [PocketQuake's orientation manual](https://github.com/seismoseo/PocketQuake/blob/v1.18.0/docs/orientation.md).
 Use a new cluster name when comparing component or orientation settings so the results are
 kept separately.
 
@@ -186,7 +255,7 @@ kept separately.
 
 ## Validation: San Ramon 2015
 
-With v0.1.0 (CON velocity model, no onset window; `--onset-mag none` repeats it). The 30 largest
+With v0.1.0 (CON velocity model, no onset window: `examples/sanramon2015.sh` passes `--onset-mag none`). The 30 largest
 events (M 2.55–3.6) of the 2015 San Ramon swarm, against two independent
 references: the NCSS analyst picks, and LDEO's double-difference catalog NCAeqDD v202112.1
 (Waldhauser & Schaff), whose relative errors are about 13 m.
@@ -226,8 +295,40 @@ catalog's centroid, horizontal / vertical.
   Blackwell card, or a sandbox that hides the GPU), the cross-correlation falls back to the CPU; the log
   then lacks the line `GPU xcorr: ACTIVE`. For 176 events (15,400 pairs) the CPU path takes days.
 - **Disk.** The trace cache (`pipeline/runs/<name>/wf_interp_cache/`) grows with every rerun that
-  changes the traces (about 95 GB per pass for 176 events × 42 stations); delete it when the run is final.
+  changes the traces (157 GB for one pass of the benchmark, 176 events × 42 stations); delete it when the
+  run is final.
+- **Repeat a run in a new folder.** HYPOINVERSE's phase file is written from the pick times in the SAC
+  headers, and the relocation step later re-references those headers to the new origin times. A second
+  run in the same folder therefore writes about half of the picks 0.01 s differently (rounding): positions
+  move by about 10 m and a few marginal mechanisms change quality. To repeat a run exactly, start from
+  an empty run folder, waveforms included.
+- **Recent events** may lack records that the data centre has not archived yet: the benchmark's last
+  event (27 November, 8 h before the catalog export) had 21 fewer records in the first download.
 - A catalog whose network serves no picks over FDSN has no station rule yet.
+
+## References
+
+Methods and tools:
+- Klein, F. W. (2002). User's guide to HYPOINVERSE-2000. U.S. Geological Survey Open-File Report 02-171.
+- Waldhauser, F., & Ellsworth, W. L. (2000). A double-difference earthquake location algorithm: method
+  and application to the northern Hayward fault, California. *BSSA*, 90(6), 1353–1368.
+- Skoumal, R. J., Hardebeck, J. L., & Shearer, P. M. (2024). SKHASH: a Python package for computing
+  earthquake focal mechanisms. *SRL*, 95(4), 2519–2526. https://doi.org/10.1785/0220230329
+- Zhu, W., & Beroza, G. C. (2019). PhaseNet: a deep-neural-network-based seismic arrival-time picking
+  method. *GJI*, 216(1), 261–273. PhaseNet+ comes with EQNet: https://github.com/AI4EPS/EQNet
+
+Reference catalogs of the benchmark and the validation:
+- Waldhauser, F. (2009). Near-real-time double-difference event location using long-term seismic
+  archives, with application to Northern California. *BSSA*, 99(5), 2736–2748. (LDEO's real-time
+  catalog, NCAeqDDRT.v202201, copy of 2026-11-28.)
+- Waldhauser, F., & Schaff, D. P. (2008). Large-scale relocation of two decades of Northern California
+  seismicity using cross-correlation and double-difference methods. *JGR*, 113, B08311. (NCAeqDD
+  v202112.1.)
+
+Data: waveforms, stations and picks from the Northern California Earthquake Data Center (NCEDC,
+doi:10.7932/NCEDC); the catalog from USGS ComCat; NCSN's HYPOINVERSE package from NCEDC; the fault
+trace from the USGS 2023 National Seismic Hazard Model fault sections (query in
+`examples/pinnacles2026/usgs_nshm23_san_andreas.request.json`).
 
 ## License
 
