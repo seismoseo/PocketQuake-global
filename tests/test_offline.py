@@ -138,3 +138,73 @@ def test_common_stretch_keeps_the_origin_segment():
 def test_common_stretch_refuses_two_components():
     o = UTCDateTime(0)
     assert waveforms._common_stretch(Stream([_tr("HHZ", o, 6000), _tr("HHN", o, 6000)]), o) is None
+
+
+def _cached_cli(tmp_path, monkeypatch):
+    """Cached stages 1-3 and a captured orchestrator, as in test_cli_forwards_orientation_options."""
+    catalog.write(catalog.from_usgs_csv(io.StringIO(COMCAT)), str(tmp_path / "event_catalog.csv"))
+    (tmp_path / "network_picks.csv").touch()
+    st_dir = tmp_path / "station_table"
+    st_dir.mkdir()
+    for name in run.STATION_FILES:
+        (st_dir / name).touch()
+    pd.DataFrame(dict(verdict=["used"], band=["HH"], location=[""])).to_csv(st_dir / "sensors.csv", index=False)
+    called = []
+    orchestrator = types.ModuleType("pocketquake.orchestrate")
+    orchestrator.orchestrate = lambda *args, **kwargs: called.append((args, kwargs)) or {"status": "captured"}
+    monkeypatch.setitem(sys.modules, "pocketquake.orchestrate", orchestrator)
+    return called
+
+
+def test_onset_events_are_the_larger_events_largest_first(tmp_path):
+    catalog.write(catalog.from_usgs_csv(io.StringIO(COMCAT)), str(tmp_path / "c.csv"))
+    cat = pd.read_csv(tmp_path / "c.csv")
+    assert run.onset_events(cat, "2.0") == ("20151019232117", "20151019232111")
+    assert run.onset_events(cat, 3.0) == ("20151019232117",)
+    assert run.onset_events(cat, "none") == () and run.onset_events(cat, 5.0) == ()
+
+
+@pytest.mark.parametrize("extra, expected", [
+    ([], {frozenset({"20151019232117", "20151019232111"}): dict(pre=0.05, post=0.05, bandpass=(1, 40))}),
+    (["--onset-mag", "3"], {frozenset({"20151019232117"}): dict(pre=0.05, post=0.05, bandpass=(1, 40))}),
+    (["--onset-mag", "none"], {}),
+])
+def test_cluster_carries_the_onset_window(tmp_path, monkeypatch, extra, expected):
+    """The generated cluster arguments build a pipeline configuration with the onset window."""
+    from pipeline.clusters._base import global_cluster, layered_velmodel
+    called = _cached_cli(tmp_path, monkeypatch)
+    run.main(["--name", "offline", "--region", "Offline", "--work", str(tmp_path),
+              "--catalog-csv", "unused.csv", "--velmodel", "con", "--apply", *extra])
+    args = called[0][1]["spec_extra"]["factory_args"]
+    kw = eval(f"dict({args})", {"layered_velmodel": layered_velmodel})
+    cfg = global_cluster("offline", "Offline", str(tmp_path), (37.79, -121.96), (37.7, 37.9, -122.0, -121.9), **kw)
+    assert cfg.xcorr_pair_overrides == expected
+    assert cfg.mainshock_event_id == "20151019232117"
+
+
+def test_ncsn_model_pair_follows_the_multiple_model_file(tmp_path):
+    """--velmodel ncsn:gab: NCSN's primary + alternate model, delays, P-to-S ratios and alternate list
+    reach HYPOINVERSE as NCSN gives them; HypoDD gets their slowness average in <= 20 layers."""
+    from pipeline.clusters._base import layered_velmodel
+    m = tmp_path / "models"
+    m.mkdir()
+    crt = lambda z, v: "X TEST 4 0.1\n" + "".join(f"{x:5.2f}" for x in z) + "\n" + "".join(f"{x:5.2f}" for x in v) + "\n"
+    (m / "gab.crt").write_text(crt((0.0, 4.0, 22.5, 25.5), (3.73, 6.07, 6.47, 7.95)))
+    (m / "dia.crt").write_text(crt((0.0, 1.5, 5.8, 14.4, 29.0), (2.45, 4.62, 5.80, 6.05, 7.95)))
+    (m / "gab5.del").write_text("PGH   NC  0.07 D\n")
+    (m / "alt.alt").write_text("BAV   NC  A\n")
+    (tmp_path / "multmod.hyp").write_text(
+        "* test\ndel -1 './models/alt.alt'\ncrt 5 './models/gab.crt' /pacific side\n"
+        "del 5 './models/gab5.del'\ncrt 6 './models/dia.crt'\ndel 6 './models/gab5.del'\n"
+        "psm 5 1.744 0\npsm 6 1.744 0\nalt 5 6\n")
+    extra = tmp_path / "extra.txt"
+    extra.write_text("BPV   NC  A\n")
+    text, vpvs, note = run._ncsn_velocity_model_arg("ncsn_gab", "gab", str(tmp_path / "multmod.hyp"),
+                                                    str(extra), str(tmp_path))
+    vm = eval(text, {"layered_velmodel": layered_velmodel})
+    assert vpvs == 1.744 and len(vm.p_rows) <= 20
+    assert vm.hyp_lines == ("DEL -1 '{dir}/ncsn_alternate_stations.del'", "CRT 1 '{dir}/gab.crt'",
+                            "DEL 1 '{dir}/gab5.del'", "CRT 2 '{dir}/dia.crt'", "DEL 2 '{dir}/gab5.del'",
+                            "PSM 1 1.744 0.0", "PSM 2 1.744 0.0", "ALT 1 2")
+    assert all(os.path.exists(f) for f in vm.hyp_files) and len(vm.takeoff_rows) == 2
+    assert (tmp_path / "ncsn_alternate_stations.del").read_text() == "BAV   NC  A\nBPV   NC  A\n"

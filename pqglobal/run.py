@@ -8,7 +8,9 @@ Stages (each one writes into --work and is reused on a rerun):
                    sensor at >= --min-sps -> station_table/ (FDSN_station.csv, sensors.csv,
                    inventory.xml)
   4. run           PocketQuake's orchestrator: scaffold the cluster, fetch the event waveforms
-                   (FDSN dataselect), picking, HYPOINVERSE, HypoDD dt.ct/dt.cc, SKHASH, notebook
+                   (FDSN dataselect), picking, HYPOINVERSE, HypoDD dt.ct/dt.cc, SKHASH, notebook;
+                   pairs with an event of magnitude >= --onset-mag (2.0) are cross-correlated on the
+                   onset only
 
 --stop-after stations shows the station set before anything is downloaded. Defaults: dry run
 (prints what it would do); --apply acts.
@@ -100,6 +102,18 @@ def _ncsn_velocity_model_arg(name, code, multmod, alt_extra, work, vpvs=None):
     return text, vpvs, note
 
 
+ONSET_WINDOW = dict(pre=0.05, post=0.05, bandpass=(1, 40))
+
+
+def onset_events(cat, onset_mag):
+    """Event ids (the pipeline's UTC second) of the catalog events with magnitude >= onset_mag, largest
+    first; () for 'none'. Pairs that include one of them are cross-correlated on the onset only."""
+    if onset_mag is None or str(onset_mag).lower() == "none":
+        return ()
+    big = cat[cat.magnitude >= float(onset_mag)].sort_values("magnitude", ascending=False, kind="mergesort")
+    return tuple(event_id(t) for t in big.time)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--name", required=True, help="cluster name, e.g. sanramon2015")
@@ -132,6 +146,11 @@ def main(argv=None):
     ap.add_argument("--post", type=float, default=360.0)
     ap.add_argument("--fetch-workers", type=int, default=2)
     ap.add_argument("--cores", type=int, default=2, help="xcorr worker cap (memory!)")
+    ap.add_argument("--onset-mag", default="2.0",
+                    help="cross-correlate every event pair that includes an event of at least this "
+                         "magnitude on the onset only (+-0.05 s around the pick, 1-40 Hz, instead of "
+                         "+-0.5 s, 5-20 Hz), so the larger events are placed by where their rupture "
+                         "started; 'none' turns it off (default 2.0)")
     ap.add_argument("--s-on-t", action="store_true",
                     help="measure S differential times on T after N/E to R/T rotation; P stays on Z")
     ap.add_argument("--orientation-csv", metavar="PATH",
@@ -214,6 +233,11 @@ def main(argv=None):
                     f"sensors={tuple(bands)!r}, radius_km={a.radius_km + 10}, hypodd_vpvs={a.vpvs}, "
                     f'mainshock_event_id="{event_id(big.time)}", '
                     f'magnitude_label="USGS ComCat magnitude"')
+    onset = onset_events(cat, a.onset_mag)
+    if onset:
+        factory_args += (f", xcorr_pair_overrides={{frozenset({onset!r}): "
+                         f"dict(pre={ONSET_WINDOW['pre']}, post={ONSET_WINDOW['post']}, "
+                         f"bandpass={ONSET_WINDOW['bandpass']!r})}}")
 
     def station_tables_fn(dst):
         os.makedirs(dst, exist_ok=True)
@@ -233,6 +257,8 @@ def main(argv=None):
                                              station_master_files=("FDSN_station.csv",)))
     print(f"[run] cluster {a.name} ({a.region}) epicenter {lat}, {lon}; bounds {bounds}\n"
           f"      {factory_args}")
+    print(f"[run] onset window for {len(onset)} events of magnitude >= {a.onset_mag}" if onset
+          else "[run] no onset window (--onset-mag none, or no event that large)")
     if kw["s_on_t"]:
         print(f"[run] S on T; residual orientation table={a.orientation_csv or 'none (0 deg)'}; "
               f"missing={kw['orientation_missing']}; reference={a.rotation_reference or 'each event'}")
