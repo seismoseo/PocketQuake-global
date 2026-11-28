@@ -31,9 +31,9 @@ The side is that of the nearest segment of the USGS NSHM23 San Andreas fault tra
 | BK.TUMY | 31.0 | 2024-11-06 |
 | WR.CK14 | 47.5 | 2022-01-26 |
 
-With them on DIA, the median HYPOINVERSE RMS falls from 0.28 to 0.19 s, and 56 instead of 48 focal
-mechanisms reach quality A or B. The relocated sequence then lies 0.96 km instead of 1.54 km south-west
-of the mapped fault trace, with the same shape. Without `--alternate-extra`, the run uses NCSN's list
+With them on DIA, the median HYPOINVERSE RMS falls from 0.28 to 0.19 s, and 80 instead of 62 events get a
+focal mechanism of quality A or B (56 instead of 48 of them with a single solution). The relocated sequence
+then lies 0.96 km instead of 1.54 km south-west of the mapped fault trace, with the same shape. Without `--alternate-extra`, the run uses NCSN's list
 exactly as distributed.
 
 **NCSN's HYPOINVERSE package** (`hypoinv-standalone-20230210.zip` from NCEDC; the script downloads it and

@@ -3,6 +3,33 @@
 Versioning follows [Semantic Versioning](https://semver.org/). The single source of truth is
 `pqglobal.__version__`; `pyproject.toml` reads it.
 
+## 0.3.0 — 2026-11-28
+
+**Benchmark: the November 2026 Pinnacles sequence** (`examples/pinnacles2026.sh`): the 176 USGS ComCat events
+within 15 km of the Mw 4.98 mainshock of 20 Nov 2026 on the creeping section of the San Andreas fault, end
+to end, with `examples/pinnacles2026/check.py` (the benchmark numbers beside the reference values) and
+`examples/pinnacles2026/figure.py` (the README figure). Inputs: the ComCat export as of 2026-11-27, the 10
+east-side stations newer than NCSN's alternate list, the USGS NSHM23 fault trace; NCSN's HYPOINVERSE
+package is downloaded from NCEDC and checked.
+
+**Added**
+- `--velmodel ncsn:<code>` with `--ncsn-multmod` (NCSN's `multmod5a.hyp`) and `--alternate-extra`: NCSN's
+  own setup for a region with two models across a fault (e.g. `ncsn:gab`, Bear Valley: Gabilan for the
+  Pacific side, Diablo for the stations in the alternate list). HYPOINVERSE reads NCSN's gradient models,
+  station delays, P-to-S ratios and alternate list exactly as NCSN does; HypoDD gets the slowness average of
+  the two models in at most 20 layers; SKHASH traces takeoff angles through the average and both models.
+- `--onset-mag` (default 2.0): every event pair that includes an event of at least this magnitude is
+  cross-correlated on the onset only (+-0.05 s around the pick, 1-40 Hz, instead of +-0.5 s, 5-20 Hz), so
+  the larger events are placed by where their rupture started; `none` turns it off.
+- Offline tests for both.
+
+**Changed**
+- The onset window is on by default. Runs made with 0.2.0 or earlier (such as the San Ramon validation
+  below) did not use it; pass `--onset-mag none` to repeat them exactly.
+
+**Depends on** PocketQuake v1.18.0 (pipeline: several HYPOINVERSE models per run, onset window for global
+clusters, `XCORR_VRAM_FRACTION` / `XCORR_VRAM_CAP` for a shared GPU).
+
 ## 0.2.0 — 2026-11-22
 
 - Forward `--s-on-t`, `--orientation-csv`, `--orientation-missing {error,zero,skip}`, and
