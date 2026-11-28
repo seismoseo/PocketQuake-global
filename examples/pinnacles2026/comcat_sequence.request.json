@@ -1,0 +1,8 @@
+{
+ "url": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=csv&orderby=time-asc&starttime=2026-11-01T00%3A00%3A00&endtime=2026-11-28T00%3A00%3A00&latitude=36.6071667&longitude=-121.2083333&maxradiuskm=15.0",
+ "status": 200,
+ "time": "2026-11-27T14:50:09Z",
+ "bytes": 38068,
+ "sha256": "e0fa4a69303c2e41b995544159be8907e1b0b8afef7c7f90ae560c18392c0625",
+ "file": "examples/pinnacles2026/comcat_sequence.csv"
+}
