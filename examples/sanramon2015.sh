@@ -16,6 +16,7 @@ RADIUS_KM=60                    # stations the network picked, within this dista
 MIN_SPS=100                     # three-component sensors at this sampling rate or more
 VELMODEL=con                    # NCSN Concord-Calaveras (built in) or a CSV of layers: top_km,vp_km_s
 VPVS=1.747
+ONSET_MAG=none                  # as validated with v0.1.0 (no onset window); 2.0 is the default since v0.3.0
 CORES=2                        # cross-correlation worker cap (memory on a shared machine)
 LARGEST=${LARGEST:-}            # e.g. 30 for a quick subset
 
@@ -23,7 +24,7 @@ cd "$(dirname "$0")/.."
 WORK=work/$NAME${LARGEST:+_top$LARGEST}
 ARGS=(--name "$NAME${LARGEST:+top$LARGEST}" --region "$REGION${LARGEST:+Top$LARGEST}" --work "$WORK"
       --usgs-box "$BOX" --start "$START" --end "$END" --radius-km "$RADIUS_KM" --min-sps "$MIN_SPS"
-      --velmodel "$VELMODEL" --vpvs "$VPVS" --cores "$CORES")
+      --velmodel "$VELMODEL" --vpvs "$VPVS" --cores "$CORES" --onset-mag "$ONSET_MAG")
 [ -n "$LARGEST" ] && ARGS+=(--largest "$LARGEST")
 
 if [ "${1:-}" = "apply" ]; then

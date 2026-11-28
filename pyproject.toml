@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=64"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,15 +7,29 @@ name = "pocketquake-global"
 dynamic = ["version"]            # read from pqglobal.__version__
 description = "From an earthquake catalog anywhere to relocated hypocenters, focal mechanisms and a summary notebook, with FDSN data and PocketQuake's pipeline"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{name = "Min-Seong Seo"}]
 requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+# Install it editable (pip install -e .): the package finds PocketQuake and its pipeline in the git
+# submodules under external/, which a regular install would leave behind.
 # The relocation pipeline's own dependencies (PhaseNet+/EQNet, PyTorch, SKHASH, HYPOINVERSE, HypoDD)
 # come with PocketQuake's environment; see README "Install".
 dependencies = ["obspy>=1.4", "numpy", "pandas"]
 
 [project.optional-dependencies]
 test = ["pytest"]
+
+[project.urls]
+Homepage = "https://github.com/seismoseo/PocketQuake-global"
+Changelog = "https://github.com/seismoseo/PocketQuake-global/blob/main/CHANGELOG.md"
+Issues = "https://github.com/seismoseo/PocketQuake-global/issues"
 
 [project.scripts]
 pocketquake-global = "pqglobal.run:main"

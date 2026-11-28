@@ -1,0 +1,8 @@
+{
+ "url": "https://services.arcgis.com/v01gqwM5QqNysAAi/ArcGIS/rest/services/USGS_NSHM_Features/FeatureServer/5/query?geometry=-122.6%2C35.4%2C-119.9%2C37.6&geometryType=esriGeometryEnvelope&inSR=4326&spatialRel=esriSpatialRelIntersects&outFields=%2A&outSR=4326&f=geojson&returnGeometry=true&where=FaultName+LIKE+%27%25San+Andreas%25%27",
+ "status": 200,
+ "time": "2026-11-27T15:50:47Z",
+ "bytes": 3955,
+ "sha256": "9023f438784bb3dce6da35d690815ca49d36891ec7ea2b62c69d92e659c7311e",
+ "file": "examples/pinnacles2026/usgs_nshm23_san_andreas.geojson"
+}

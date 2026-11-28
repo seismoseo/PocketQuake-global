@@ -1,0 +1,10 @@
+BPV   NC  A
+HBH   NC  A
+HHP   NC  A
+BPA   NC  A
+BABI  BK  A
+HLO   NC  A
+STRA  BK  A
+AZUL  BK  A
+TUMY  BK  A
+CK14  WR  A

@@ -1,0 +1,21 @@
+{
+ "url": "https://nocaldd.ldeo.columbia.edu/catalog/NCAeqDDRT.v202201",
+ "status": 200,
+ "time": "2026-11-28T11:12:24Z",
+ "bytes": 22879,
+ "sha256": "ab52e3b4876ce45ef4a3d6d84d1c018a3cf214180c76010b5f4e299a87aaec9a",
+ "file": "examples/pinnacles2026/ldeo_ddrt_sequence.txt",
+ "source": {
+  "note": "the whole catalog file this excerpt was cut from",
+  "bytes": 13393145,
+  "sha256": "4fb3fa4ad80fa14117617be6adcbfceccd414fc61b4a975178d062b9caa1e028",
+  "created_line": "NCAeqDDRT.v202201 --- Version: 202201 --- Created: Sat Nov 28 05:50:47 EST 2026"
+ },
+ "selection": "LDEO's header verbatim, then the data lines of the events of comcat_sequence.csv (ComCat id = 'nc' + CUSP id), in LDEO's order",
+ "events": 176,
+ "methods": {
+  "DDRT-3.0": 173,
+  "HINV": 3
+ },
+ "cite": "Waldhauser, F. (2009), Near-real-time double-difference event location using long-term seismic archives, with application to Northern California, BSSA 99, 2736-2748, doi:10.1785/0120080294; catalog NCAeqDDRT.v202201 created 2026-11-28 05:50:47 EST"
+}
